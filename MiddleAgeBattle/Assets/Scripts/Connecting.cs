@@ -21,6 +21,9 @@ public class Connecting : MonoBehaviour
 	private Button _createGameButton;
 
 	[SerializeField]
+	private Button _joinGameButton;
+
+	[SerializeField]
 	private Text _serverStatusInfo;
 
 	[SerializeField]
@@ -42,7 +45,7 @@ public class Connecting : MonoBehaviour
 
 	private void Start()
 	{
-		_loadBalancingClient = new LoadBalancingClient(MASTER_IP_W, APP_ID, "1.0"); // the master server address is not used when connecting via nameserver
+		_loadBalancingClient = new LoadBalancingClient(MASTER_IP_M, APP_ID, "1.0"); // the master server address is not used when connecting via nameserver
 		if (IsUserDataExist())
 		{
 			LoadUserData();
@@ -65,6 +68,7 @@ public class Connecting : MonoBehaviour
 		_loadBalancingClient.OnEventAction += OnEventActionHandler;
 
 		_createGameButton.onClick.AddListener(CreateGame);
+		_joinGameButton.onClick.AddListener(JoinGame);
 	}
 
 	private void OnEventActionHandler(ExitGames.Client.Photon.EventData eventData)
@@ -76,24 +80,29 @@ public class Connecting : MonoBehaviour
 		{
 			case EventCode.Join:
 				{
+					string name = "";
 					// we only want to deal with events from the game server
 					if (_loadBalancingClient.Server == ServerConnection.GameServer)
 					{
-						var playerProps = (Hashtable)eventData[ParameterCode.PlayerProperties];
+						var playerProps = (ExitGames.Client.Photon.Hashtable)eventData[ParameterCode.PlayerProperties];
+
 						var userId = (string)playerProps[ActorProperties.UserId];
+						var userName = (string)playerProps[ActorProperties.PlayerName];
+
 						if (userId == _loadBalancingClient.UserId)
 						{
 							// local user
 							//if (OnGameEntered != null) OnGameEntered(actorNr);
+							eventCode = "EventCode: Join, Local, " + userName + " ID: " + userId;
 						}
-						else
+						//else
 						{
 							// other players
 							//if (OnPlayerJoined != null) OnPlayerJoined(actorNr);
+							eventCode = "EventCode: Join, Other, " + userName + " ID: " + userId;
 						}
 					}
-
-					eventCode = "EventCode: Join";
+					
 					break;
 				}
 			case EventCode.Leave:
@@ -276,13 +285,22 @@ public class Connecting : MonoBehaviour
 		_userTokenText.text = _userToken;
 	}
 
+	public enum GameType
+	{
+		OneVsOne,
+		TwoVsTwo
+	}
+
+	private const string BET_AMOUNT_PROP = "bc";
+	private const string GAME_TYPE_PROP = "gt";
+
 	/// <summary>
 	/// Gets the room options needed for the game properties.
 	/// </summary>
 	/// <param name="aType"></param>
 	/// <param name="aMaxPlayers"></param>
 	/// <returns></returns>
-	protected RoomOptions _getRoomOptionsForGameType(byte aMaxPlayers, int betCount)
+	protected RoomOptions _getRoomOptionsForGameType(byte aMaxPlayers, int betCount, GameType gameType)
 	{
 		var roomOptions = new RoomOptions();
 		roomOptions.CheckUserOnJoin = true;             // no duplicate users allowed
@@ -290,27 +308,29 @@ public class Connecting : MonoBehaviour
 		roomOptions.IsVisible = true;    // Private games can only be joined by knowing table names.
 		roomOptions.MaxPlayers = aMaxPlayers;           // max. players allowed
 		roomOptions.PublishUserId = true;               // we allow everyone to see other player's user ids															
-		roomOptions.PlayerTtl = 15 * 1000;              // player slots are reserved and kept alive for this duration
+		roomOptions.PlayerTtl = 60 * 1000;              // player slots are reserved and kept alive for this duration
 		roomOptions.EmptyRoomTtl = 60 * 1000;           // empty rooms are kept alive for this duration
 														// set custom properties
 		roomOptions.CustomRoomProperties = new ExitGames.Client.Photon.Hashtable();
-		roomOptions.CustomRoomProperties.Add("BetCount", betCount);
+		roomOptions.CustomRoomProperties.Add(BET_AMOUNT_PROP, betCount);
+		roomOptions.CustomRoomProperties.Add(GAME_TYPE_PROP, gameType);
 		// set lobby properties
-		//roomOptions.CustomRoomPropertiesForLobby = new string[]
-		//{
-		//		Constants.PropGameType,
-		//		Constants.PropGameBetAmount
-		//};
+		roomOptions.CustomRoomPropertiesForLobby = new string[]
+		{
+				GAME_TYPE_PROP,
+				BET_AMOUNT_PROP
+		};
 		return (roomOptions);
 	}
 
 	private const int MAX_PLAYERS = 2;
+	private const int BET_MINIMAL = 500;
 	public static readonly TypedLobby LobbyMain = new TypedLobby("main", LobbyType.Default);
 
 
 	private void CreateGame()
 	{
-		var roomOpts = _getRoomOptionsForGameType(MAX_PLAYERS, 500);
+		var roomOpts = _getRoomOptionsForGameType(MAX_PLAYERS, BET_MINIMAL, GameType.OneVsOne);
 		// get the lobby
 		var lobby = LobbyMain;
 		// try to create the game 
@@ -319,6 +339,16 @@ public class Connecting : MonoBehaviour
 
 	private void JoinGame()
 	{
+		var roomProperties = GetExpectedRoomProperties(GameType.OneVsOne, BET_MINIMAL);
+		var lobby = LobbyMain;
+		_loadBalancingClient.OpJoinRandomRoom(roomProperties, MAX_PLAYERS, MatchmakingMode.FillRoom, lobby, null);
+	}
 
+	protected ExitGames.Client.Photon.Hashtable GetExpectedRoomProperties(GameType gameType, int betAmount)
+	{
+		var expectedRoomProps = new ExitGames.Client.Photon.Hashtable();
+		expectedRoomProps.Add(BET_AMOUNT_PROP, betAmount);
+		expectedRoomProps.Add(GAME_TYPE_PROP, gameType);
+		return (expectedRoomProps);
 	}
 }
