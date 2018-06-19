@@ -1,7 +1,7 @@
 ﻿using ExitGames.Client.Photon.LoadBalancing;
 using System;
-using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -38,14 +38,22 @@ public class Connecting : MonoBehaviour
 	[SerializeField]
 	private Text _roomInfo;
 
+	[SerializeField]
+	private GameObject _playerViewPrefab;
+
+	[SerializeField]
+	private GameObject _playerViewParent;
+
 	private string _userName;
 	private string _userToken;
 
 	private LoadBalancingClient _loadBalancingClient;
+	private PeerManager _peerManager;
+
+	private List<PlayerView> _players = new List<PlayerView>();
 
 	private void Start()
 	{
-		_loadBalancingClient = new LoadBalancingClient(MASTER_IP_M, APP_ID, "1.0"); // the master server address is not used when connecting via nameserver
 		if (IsUserDataExist())
 		{
 			LoadUserData();
@@ -56,6 +64,9 @@ public class Connecting : MonoBehaviour
 			_userToken = Guid.NewGuid().ToString();
 			SaveUserData();
 		}
+		_players.Clear();
+		_peerManager = PeerManager.Create(_userName, _userToken);
+		_peerManager.Initialize();
 		SetViewUserData();
 		Subscribe();
 	}
@@ -63,172 +74,82 @@ public class Connecting : MonoBehaviour
 	private void Subscribe()
 	{
 		_connectButton.onClick.AddListener(OnConnectButtonClickHandler);
-		_loadBalancingClient.OnStateChangeAction += OnStateChangeActionHandler;
-		_loadBalancingClient.OnOpResponseAction += OnOpResponseActionHandler;
-		_loadBalancingClient.OnEventAction += OnEventActionHandler;
+		_peerManager.OnStateChangeAction += OnStateChangeActionHandler;
+		_peerManager.OnOpResponseAction += OnOpResponseActionHandler;
+		_peerManager.OnEventAction += OnEventActionHandler;
+		_peerManager.OnGameEntered += OnGameEnteredHandler;
+		_peerManager.OnPlayerJoined += OnPlayerJoinedHandler;
+		_peerManager.OnPlayerLeft += OnPlayerLeftHandler;
+		_peerManager.OnGameLeft += OnGameLeftHandler;
 
 		_createGameButton.onClick.AddListener(CreateGame);
 		_joinGameButton.onClick.AddListener(JoinGame);
 	}
 
-	private void OnEventActionHandler(ExitGames.Client.Photon.EventData eventData)
+	private void OnGameLeftHandler(int userID)
 	{
-
-		string eventCode = eventData.Code.ToString();
-
-		switch (eventData.Code)
-		{
-			case EventCode.Join:
-				{
-					string name = "";
-					// we only want to deal with events from the game server
-					if (_loadBalancingClient.Server == ServerConnection.GameServer)
-					{
-						var playerProps = (ExitGames.Client.Photon.Hashtable)eventData[ParameterCode.PlayerProperties];
-
-						var userId = (string)playerProps[ActorProperties.UserId];
-						var userName = (string)playerProps[ActorProperties.PlayerName];
-
-						if (userId == _loadBalancingClient.UserId)
-						{
-							// local user
-							//if (OnGameEntered != null) OnGameEntered(actorNr);
-							eventCode = "EventCode: Join, Local, " + userName + " ID: " + userId;
-						}
-						//else
-						{
-							// other players
-							//if (OnPlayerJoined != null) OnPlayerJoined(actorNr);
-							eventCode = "EventCode: Join, Other, " + userName + " ID: " + userId;
-						}
-					}
-					
-					break;
-				}
-			case EventCode.Leave:
-				{
-					// we only want to deal with events from the game server
-					if (_loadBalancingClient.Server == ServerConnection.GameServer)
-					{
-						// check if we have props
-						//if (eventData.ContainsKey(ParameterCode.PlayerProperties))
-						{
-							var playerProps = (Hashtable)eventData[ParameterCode.PlayerProperties];
-							var userId = (string)playerProps[ActorProperties.UserId];
-							if (userId == _loadBalancingClient.UserId)
-							{
-								// local user
-								//if (OnGameLeft != null) OnGameLeft(actorNr);
-							}
-							else
-							{
-								// other players
-								//if (OnPlayerLeft != null) OnPlayerLeft(actorNr);
-							}
-						}
-						//else
-						{
-							// all other players - just call default listener
-							//if (OnPlayerLeft != null) OnPlayerLeft(actorNr);
-						}
-					}
-					eventCode = "EventCode: Leave";
-					break;
-				}
-
-			case EventCode.AppStats:
-				{
-					// get the parameters
-					var evParams = eventData.Parameters;
-					string text = "AppStats: paramCount";
-
-					foreach (var param in evParams)
-					{
-						text += "param Key:" + param.Key + " param Val:" + param.Value.ToString() + "\n";
-					}
-
-					eventCode = text;
-					//eventCode += evParams != null ? evParams.Count.ToString() : "AppStats without Parameters";
-					break;
-				}
-			default:
-				{
-					// all custom events are sent out
-					if (eventData.Code <= 200)
-					{
-						//if (OnGameEvent != null) OnGameEvent(aEvent);
-					}
-					break;
-				}
-
-		}
-		_roomInfo.text = eventCode;
+		var playerView = GetPlayerViewByUserID(userID);
+		_players.Remove(playerView);
+		Debug.LogFormat("[Connecting] OnGameLeftHandler, was left player with ID: {0}, player: {1}", userID, playerView.PeerPlayer);
+		Destroy(playerView.gameObject);
 	}
 
-	private void OnOpResponseActionHandler(ExitGames.Client.Photon.OperationResponse response)
+	private void OnPlayerLeftHandler(int userID)
 	{
-		string operationCode = response.OperationCode.ToString();
-		
-		switch (response.OperationCode)
-		{
-			case OperationCode.Authenticate:
-				{
-					// did we get errors?
-					if (response.ReturnCode != 0)
-					{
-						// sigh - let the listener know!
-						//if (OnConnectError != null) OnConnectError(aOpResponse.ToString());
-					}
-					operationCode = "OperationCode: Authenciate";
-					break;
-				}
-			case OperationCode.JoinLobby:
-				{
-					// call our listeners
-					//if (OnConnect != null) OnConnect();
-					operationCode = "OperationCode: JoinLobby";
-					break;
-				}
-			case OperationCode.JoinRandomGame:
-				{
-					// did we find a game?
-					if (response.ReturnCode != 0)
-					{
-						// sigh - let the listener know!
-						//if (OnFindGame != null) OnFindGame(false);
-					}
-					else
-					{
-						// yaay!
-						//if (OnFindGame != null) OnFindGame(true);
-					}
-
-					operationCode = "OperationCode: JoinRandomGame";
-					break;
-				}
-			case OperationCode.SetProperties:
-				{
-					// dump room info
-					operationCode = "OperationCode: SetProperties";
-					var playerList = _loadBalancingClient.CurrentRoom.Players;
-					//Log.Debug("PHOTON: PLAYER: ROOMINFO: Players =>\n{0}", JsonConvert.SerializeObject(playerList));
-					break;
-				}
-			default: break;
-		}
-		_lobbyInfo.text = operationCode;
+		var playerView = GetPlayerViewByUserID(userID);
+		_players.Remove(playerView);
+		Debug.LogFormat("[Connecting] OnPlayerLeftHandler, was lefted player with ID: {0}, player: {1}", userID, playerView.PeerPlayer);
+		Destroy(playerView.gameObject);
 	}
 
-	private void OnStateChangeActionHandler(ClientState state)
+	private void OnDestroy()
 	{
-		_serverStatusInfo.text = state.ToString();
+		_peerManager.Dispose();
+		Unsubscribe();
+	}
+
+	private void OnPlayerJoinedHandler(int userID)
+	{
+		bool playerExist = PlayerWithIDExist(userID);
+		var playerView = playerExist ? GetPlayerViewByUserID(userID) : CreatePlayer(_peerManager.PeerPlayerLocal);
+		if (!playerExist)
+			_players.Add(playerView);
+		Debug.LogFormat("[Connecting] OnPlayerJoinedHandler, was joined player with ID: {0}, player: {1}", userID, playerView.PeerPlayer);
+	}
+
+	private void OnGameEnteredHandler(int userID)
+	{
+		bool playerExist = PlayerWithIDExist(userID);
+		var playerView = playerExist ? GetPlayerViewByUserID(userID) : CreatePlayer(_peerManager.PeerPlayerLocal);
+		if (!playerExist)
+			_players.Add(playerView);
+		Debug.LogFormat("[Connecting] OnGameEnteredHandler, was joined player with ID: {0}, player: {1}", userID, playerView.PeerPlayer);
+	}
+
+	private void OnEventActionHandler(string eventData)
+	{
+		_roomInfo.text = eventData;
+	}
+
+	private void OnOpResponseActionHandler(string response)
+	{
+		_lobbyInfo.text = response;
+	}
+
+	private void OnStateChangeActionHandler(string state)
+	{
+		_serverStatusInfo.text = state;
 	}
 
 	private void Unsubscribe()
 	{
 		_connectButton.onClick.RemoveAllListeners();
-		_loadBalancingClient.OnStateChangeAction -= OnStateChangeActionHandler;
-		_loadBalancingClient.OnOpResponseAction -= OnOpResponseActionHandler;
+		_peerManager.OnStateChangeAction -= OnStateChangeActionHandler;
+		_peerManager.OnOpResponseAction -= OnOpResponseActionHandler;
+		_peerManager.OnGameEntered -= OnGameEnteredHandler;
+		_peerManager.OnPlayerJoined -= OnPlayerJoinedHandler;
+		_peerManager.OnPlayerLeft -= OnPlayerLeftHandler;
+		_peerManager.OnGameLeft -= OnGameLeftHandler;
 
 		_createGameButton.onClick.RemoveAllListeners();
 	}
@@ -252,15 +173,15 @@ public class Connecting : MonoBehaviour
 
 	private void Update()
 	{
-		if (_loadBalancingClient != null)
+		if (_peerManager != null)
 		{
-			_loadBalancingClient.Service();  // easy but ineffective. should be refined to using dispatch every frame and sendoutgoing on demand
+			_peerManager.UpdateService();  // easy but ineffective. should be refined to using dispatch every frame and sendoutgoing on demand
 		}
 	}
 
 	private void OnApplicationQuit()
 	{
-		if (_loadBalancingClient != null) _loadBalancingClient.Disconnect();
+		if (_peerManager != null) _peerManager.Dispose();
 	}
 
 	private void OnConnectButtonClickHandler()
@@ -270,13 +191,7 @@ public class Connecting : MonoBehaviour
 
 	private void Connect()
 	{
-		AuthenticationValues customAuth = new AuthenticationValues();
-		customAuth.AddAuthParameter("username", _userName);  // expected by the demo custom auth service
-		customAuth.AddAuthParameter("token", _userToken);    // expected by the demo custom auth service
-		_loadBalancingClient.AuthValues = customAuth;
-
-		_loadBalancingClient.AutoJoinLobby = false;
-		_loadBalancingClient.ConnectToRegionMaster("eu");
+		_peerManager.Connect();
 	}
 
 	private void SetViewUserData()
@@ -291,64 +206,61 @@ public class Connecting : MonoBehaviour
 		TwoVsTwo
 	}
 
-	private const string BET_AMOUNT_PROP = "bc";
-	private const string GAME_TYPE_PROP = "gt";
-
-	/// <summary>
-	/// Gets the room options needed for the game properties.
-	/// </summary>
-	/// <param name="aType"></param>
-	/// <param name="aMaxPlayers"></param>
-	/// <returns></returns>
-	protected RoomOptions _getRoomOptionsForGameType(byte aMaxPlayers, int betCount, GameType gameType)
-	{
-		var roomOptions = new RoomOptions();
-		roomOptions.CheckUserOnJoin = true;             // no duplicate users allowed
-		roomOptions.IsOpen = true;                      // ready for all comers
-		roomOptions.IsVisible = true;    // Private games can only be joined by knowing table names.
-		roomOptions.MaxPlayers = aMaxPlayers;           // max. players allowed
-		roomOptions.PublishUserId = true;               // we allow everyone to see other player's user ids															
-		roomOptions.PlayerTtl = 60 * 1000;              // player slots are reserved and kept alive for this duration
-		roomOptions.EmptyRoomTtl = 60 * 1000;           // empty rooms are kept alive for this duration
-														// set custom properties
-		roomOptions.CustomRoomProperties = new ExitGames.Client.Photon.Hashtable();
-		roomOptions.CustomRoomProperties.Add(BET_AMOUNT_PROP, betCount);
-		roomOptions.CustomRoomProperties.Add(GAME_TYPE_PROP, gameType);
-		// set lobby properties
-		roomOptions.CustomRoomPropertiesForLobby = new string[]
-		{
-				GAME_TYPE_PROP,
-				BET_AMOUNT_PROP
-		};
-		return (roomOptions);
-	}
-
-	private const int MAX_PLAYERS = 2;
-	private const int BET_MINIMAL = 500;
-	public static readonly TypedLobby LobbyMain = new TypedLobby("main", LobbyType.Default);
-
-
 	private void CreateGame()
 	{
-		var roomOpts = _getRoomOptionsForGameType(MAX_PLAYERS, BET_MINIMAL, GameType.OneVsOne);
-		// get the lobby
-		var lobby = LobbyMain;
-		// try to create the game 
-		_loadBalancingClient.OpCreateRoom("Room_" + UnityEngine.Random.Range(0,99), roomOpts, lobby);
+		_peerManager.Create();
 	}
 
 	private void JoinGame()
 	{
-		var roomProperties = GetExpectedRoomProperties(GameType.OneVsOne, BET_MINIMAL);
-		var lobby = LobbyMain;
-		_loadBalancingClient.OpJoinRandomRoom(roomProperties, MAX_PLAYERS, MatchmakingMode.FillRoom, lobby, null);
+		_peerManager.Create();
 	}
 
-	protected ExitGames.Client.Photon.Hashtable GetExpectedRoomProperties(GameType gameType, int betAmount)
+	private PlayerView CreatePlayer(Player player)
 	{
-		var expectedRoomProps = new ExitGames.Client.Photon.Hashtable();
-		expectedRoomProps.Add(BET_AMOUNT_PROP, betAmount);
-		expectedRoomProps.Add(GAME_TYPE_PROP, gameType);
-		return (expectedRoomProps);
+		PlayerView playerView = null;
+		var go = Instantiate(_playerViewPrefab, _playerViewParent.transform);
+		go.SetActive(true);
+		playerView = go.GetComponent<PlayerView>();
+		playerView.Initialize(player);
+		return playerView;
+	}
+
+	private PlayerView GetPlayerViewByUserID(int userID)
+	{
+		return _players.Find(player => player.PeerPlayer.UserID == userID);
+	}
+
+	private bool PlayerWithIDExist(int userID)
+	{
+		return _players.Any(player => player.PeerPlayer.UserID == userID);
+	}
+}
+
+public class Player
+{
+	public string Name { get; private set; }
+	public string TokenUID { get; private set; }
+	public bool IsLocal { get; private set; }
+
+	public int UserID { get; private set; }
+
+	public Player(string name, string tokenUID, bool isLocal, int userID)
+	{
+		Name = name;
+		TokenUID = tokenUID;
+		IsLocal = isLocal;
+		UserID = userID;
+	}
+
+	public static Player Create(string name, string tokenUID, bool isLocal, int userID)
+	{
+		return new Player(name, tokenUID, isLocal, userID);
+	}
+
+	public override string ToString()
+	{
+		string str = string.Format("Player - Name: {0}, IsLocal: {1}, UserID: {2}, Token: {3}", Name, IsLocal, UserID, TokenUID);
+		return str;
 	}
 }
