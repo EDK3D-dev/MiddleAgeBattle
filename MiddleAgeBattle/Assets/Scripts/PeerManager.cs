@@ -38,7 +38,7 @@ public class PeerManager: IDisposable
 	{
 		_userName = userName;
 		_userToken = token;
-		_loadBalancingClient = new LoadBalancingClient(MASTER_IP_M, APP_ID, "1.0");
+		_loadBalancingClient = new LoadBalancingClient(MASTER_IP_W, APP_ID, "1.0");
 	}
 
 	public static PeerManager Create(string userName, string token)
@@ -67,13 +67,15 @@ public class PeerManager: IDisposable
 		_loadBalancingClient.ConnectToRegionMaster("eu");
 	}
 
+	private string _roomName = "Room_99";
+
 	public void Create()
 	{
 		var roomOpts = _getRoomOptionsForGameType(MAX_PLAYERS, BET_MINIMAL, Connecting.GameType.OneVsOne);
 		// get the lobby
 		var lobby = LobbyMain;
 		// try to create the game 
-		_loadBalancingClient.OpCreateRoom("Room_" + UnityEngine.Random.Range(0, 99), roomOpts, lobby);
+		_loadBalancingClient.OpCreateRoom(_roomName/*UnityEngine.Random.Range(0, 99)*/, roomOpts, lobby);
 	}
 
 
@@ -81,7 +83,8 @@ public class PeerManager: IDisposable
 	{
 		var roomProperties = GetExpectedRoomProperties(Connecting.GameType.OneVsOne, BET_MINIMAL);
 		var lobby = LobbyMain;
-		_loadBalancingClient.OpJoinRandomRoom(roomProperties, MAX_PLAYERS, MatchmakingMode.FillRoom, lobby, null);
+		_loadBalancingClient.OpJoinRoom(_roomName);
+		//_loadBalancingClient.OpJoinRandomRoom(roomProperties, MAX_PLAYERS, MatchmakingMode.FillRoom, lobby, null);
 	}
 
 	public void UpdateService()
@@ -191,7 +194,9 @@ public class PeerManager: IDisposable
 					}
 
 					eventCode = text;
+					Debug.Log(_loadBalancingClient.MasterServerAddress);
 					//eventCode += evParams != null ? evParams.Count.ToString() : "AppStats without Parameters";
+					
 					break;
 				}
 			default:
@@ -260,6 +265,12 @@ public class PeerManager: IDisposable
 					//Log.Debug("PHOTON: PLAYER: ROOMINFO: Players =>\n{0}", JsonConvert.SerializeObject(playerList));
 					break;
 				}
+
+			case OperationCode.GetGameList:
+				{
+					ShowRoomInfoData();
+					break;
+				}
 			default: break;
 		}
 
@@ -318,7 +329,7 @@ public class PeerManager: IDisposable
 
 	private const int MAX_PLAYERS = 2;
 	private const int BET_MINIMAL = 500;
-	public static readonly TypedLobby LobbyMain = new TypedLobby("main", LobbyType.Default);
+	public static readonly TypedLobby LobbyMain = new TypedLobby("main", LobbyType.SqlLobby);
 
 	protected ExitGames.Client.Photon.Hashtable GetExpectedRoomProperties(Connecting.GameType gameType, int betAmount)
 	{
@@ -326,6 +337,25 @@ public class PeerManager: IDisposable
 		expectedRoomProps.Add(BET_AMOUNT_PROP, betAmount);
 		expectedRoomProps.Add(GAME_TYPE_PROP, gameType);
 		return (expectedRoomProps);
+	}
+
+	public void UpdateRoomInfoData()
+	{
+		string sql = string.Format("{0} = {1}", BET_AMOUNT_PROP, BET_MINIMAL);
+		_loadBalancingClient.OpGetGameList(LobbyMain, sql);
+		
+	}
+
+	private void ShowRoomInfoData()
+	{
+		var roomList = _loadBalancingClient.RoomInfoList;
+		foreach (var room in roomList)
+		{
+			string key = room.Key;
+			var roomValue = room.Value;
+
+			Debug.LogFormat("Key: {0}, roomInfo: Name {1}, PlayerCount: {2}, properties: {3}", key, roomValue.Name, roomValue.PlayerCount, roomValue.CustomProperties);
+		}
 	}
 }
 

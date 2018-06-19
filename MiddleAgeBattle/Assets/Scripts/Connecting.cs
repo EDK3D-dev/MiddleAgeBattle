@@ -24,6 +24,9 @@ public class Connecting : MonoBehaviour
 	private Button _joinGameButton;
 
 	[SerializeField]
+	private Button _updateRoomInfoButton;
+
+	[SerializeField]
 	private Text _serverStatusInfo;
 
 	[SerializeField]
@@ -74,6 +77,7 @@ public class Connecting : MonoBehaviour
 	private void Subscribe()
 	{
 		_connectButton.onClick.AddListener(OnConnectButtonClickHandler);
+		_updateRoomInfoButton.onClick.AddListener(OnUpdateRoomInfoButtonHandler);
 		_peerManager.OnStateChangeAction += OnStateChangeActionHandler;
 		_peerManager.OnOpResponseAction += OnOpResponseActionHandler;
 		_peerManager.OnEventAction += OnEventActionHandler;
@@ -144,6 +148,7 @@ public class Connecting : MonoBehaviour
 	private void Unsubscribe()
 	{
 		_connectButton.onClick.RemoveAllListeners();
+		_updateRoomInfoButton.onClick.RemoveAllListeners();
 		_peerManager.OnStateChangeAction -= OnStateChangeActionHandler;
 		_peerManager.OnOpResponseAction -= OnOpResponseActionHandler;
 		_peerManager.OnGameEntered -= OnGameEnteredHandler;
@@ -214,6 +219,11 @@ public class Connecting : MonoBehaviour
 	private void JoinGame()
 	{
 		_peerManager.Create();
+	}
+
+	private void OnUpdateRoomInfoButtonHandler()
+	{
+		_peerManager.UpdateRoomInfoData();
 	}
 
 	private PlayerView CreatePlayer(Player player)
