@@ -42,6 +42,9 @@ public class Connecting : MonoBehaviour
 	private Text _roomInfo;
 
 	[SerializeField]
+	private Text _serverInfo;
+
+	[SerializeField]
 	private GameObject _playerViewPrefab;
 
 	[SerializeField]
@@ -85,6 +88,7 @@ public class Connecting : MonoBehaviour
 		_peerManager.OnPlayerJoined += OnPlayerJoinedHandler;
 		_peerManager.OnPlayerLeft += OnPlayerLeftHandler;
 		_peerManager.OnGameLeft += OnGameLeftHandler;
+		_peerManager.OnServerIpChangedAction += OnServerInfoChangedHandler;
 
 		_createGameButton.onClick.AddListener(CreateGame);
 		_joinGameButton.onClick.AddListener(JoinGame);
@@ -155,6 +159,7 @@ public class Connecting : MonoBehaviour
 		_peerManager.OnPlayerJoined -= OnPlayerJoinedHandler;
 		_peerManager.OnPlayerLeft -= OnPlayerLeftHandler;
 		_peerManager.OnGameLeft -= OnGameLeftHandler;
+		_peerManager.OnServerIpChangedAction -= OnServerInfoChangedHandler;
 
 		_createGameButton.onClick.RemoveAllListeners();
 	}
@@ -218,7 +223,7 @@ public class Connecting : MonoBehaviour
 
 	private void JoinGame()
 	{
-		_peerManager.Create();
+		_peerManager.Join();
 	}
 
 	private void OnUpdateRoomInfoButtonHandler()
@@ -244,6 +249,11 @@ public class Connecting : MonoBehaviour
 	private bool PlayerWithIDExist(int userID)
 	{
 		return _players.Any(player => player.PeerPlayer.UserID == userID);
+	}
+
+	private void OnServerInfoChangedHandler(string serverInfo)
+	{
+		_serverInfo.text = serverInfo;
 	}
 }
 

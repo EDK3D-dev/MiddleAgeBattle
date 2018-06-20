@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class PeerManager: IDisposable
+public class PeerManager
 {
 	private const string MASTER_IP_M = "192.168.112.1";
 	private const string MASTER_IP_W = "192.168.52.1";
@@ -26,6 +26,7 @@ public class PeerManager: IDisposable
 	public event Action<int> OnGameLeft;
 	public event Action<int> OnPlayerJoined;
 	public event Action<int> OnPlayerLeft;
+	public event Action<string> OnServerIpChangedAction;
 
 	private Player _playerLocal;
 	public Player PeerPlayerLocal { get { return _playerLocal; } }
@@ -58,16 +59,19 @@ public class PeerManager: IDisposable
 
 	public void Connect()
 	{
-		AuthenticationValues customAuth = new AuthenticationValues();
+		_loadBalancingClient.UserId = _userToken;
+		AuthenticationValues customAuth = new AuthenticationValues(_loadBalancingClient.UserId);
+		customAuth.AuthType = CustomAuthenticationType.Custom;
 		customAuth.AddAuthParameter("username", _userName);  // expected by the demo custom auth service
 		customAuth.AddAuthParameter("token", _userToken);    // expected by the demo custom auth service
 		_loadBalancingClient.AuthValues = customAuth;
+		_loadBalancingClient.NickName = _userName;
 
 		_loadBalancingClient.AutoJoinLobby = false;
 		_loadBalancingClient.ConnectToRegionMaster("eu");
 	}
 
-	private string _roomName = "Room_99";
+	private string _roomName = "Room_";
 
 	public void Create()
 	{
@@ -75,7 +79,7 @@ public class PeerManager: IDisposable
 		// get the lobby
 		var lobby = LobbyMain;
 		// try to create the game 
-		_loadBalancingClient.OpCreateRoom(_roomName/*UnityEngine.Random.Range(0, 99)*/, roomOpts, lobby);
+		_loadBalancingClient.OpCreateRoom(_roomName+ UnityEngine.Random.Range(0, 99), roomOpts, lobby);
 	}
 
 
@@ -83,8 +87,8 @@ public class PeerManager: IDisposable
 	{
 		var roomProperties = GetExpectedRoomProperties(Connecting.GameType.OneVsOne, BET_MINIMAL);
 		var lobby = LobbyMain;
-		_loadBalancingClient.OpJoinRoom(_roomName);
-		//_loadBalancingClient.OpJoinRandomRoom(roomProperties, MAX_PLAYERS, MatchmakingMode.FillRoom, lobby, null);
+		//_loadBalancingClient.OpJoinRoom(_roomName);
+		_loadBalancingClient.OpJoinRandomRoom(roomProperties, MAX_PLAYERS, MatchmakingMode.FillRoom, lobby, null);
 	}
 
 	public void UpdateService()
@@ -194,9 +198,12 @@ public class PeerManager: IDisposable
 					}
 
 					eventCode = text;
-					Debug.Log(_loadBalancingClient.MasterServerAddress);
+					var masterServerAdress = _loadBalancingClient.MasterServerAddress;
+					Debug.Log(masterServerAdress);
+					if (OnServerIpChangedAction != null)
+						OnServerIpChangedAction(masterServerAdress);
 					//eventCode += evParams != null ? evParams.Count.ToString() : "AppStats without Parameters";
-					
+
 					break;
 				}
 			default:
@@ -360,7 +367,11 @@ public class PeerManager: IDisposable
 }
 
 
-public interface IPeerManager
+public class GameController
 {
+	public bool IsReadyToPlay;
+	public int PlayerCount;
+	private int _playerCount;
 
+	public int PlayerInGame;
 }
