@@ -375,3 +375,67 @@ public class GameController
 
 	public int PlayerInGame;
 }
+
+public class Turn
+{
+	
+}
+
+public class PlayerDice
+{
+	public string Name { get; private set; }
+	public readonly DiceRoll DiceRoll;
+}
+
+
+public sealed class DiceRoll
+{
+	private const int DICE_MIN = 1;
+	private const int DICE_MAX = 6;
+	public int DiceCount { get; private set; }
+	public int Sum { get; private set; }
+
+	public int[] DiceRollResult { get; private set; }
+	public DiceRoll(int diceCount)
+	{
+		DiceCount = diceCount;
+	}
+
+	public void DiceRollProcess()
+	{
+		Sum = 0;
+		DiceRollResult = new int[DiceCount];
+		for (int i = 0; i < DiceCount; i++)
+		{
+			int diceRollResult = ThrowDice();
+			Sum += diceRollResult;
+			DiceRollResult[i] = diceRollResult;
+		}
+	}
+
+	public DiceRoll Create(int diceCount)
+	{
+		return new DiceRoll(diceCount);
+	}
+
+	public override string ToString()
+	{
+		string result = string.Format("Dice Count: {0};", DiceCount);
+		if (DiceRollResult != null && DiceRollResult.Length > 0)
+		{
+			int i = 1;
+			foreach (var dice in DiceRollResult)
+			{
+				result += " Dice[" + i + "] = " + dice + ";";
+				i++;
+			}
+		}
+		result += " Sum: " + Sum;
+		return result;
+	}
+
+	private int ThrowDice()
+	{
+		return UnityEngine.Random.Range(DICE_MIN, DICE_MAX);
+	}
+}
